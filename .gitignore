@@ -33,3 +33,15 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
+
+# vim
+*.swp
+
+# Virtualenv
+bin
+include
+lib
+local
+
+# secrets and local storage
+.GoogleDriveSync
