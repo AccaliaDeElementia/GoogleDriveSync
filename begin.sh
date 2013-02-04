@@ -5,6 +5,7 @@ if [ ! \( -d bin -a -d include -a -d lib -a -d local \) ]; then
     virtualenv .
     #virtualenv --relocatable . > /dev/null
     pip install -t ./lib/python-2.7/site-packages google-api-python-client
+    pip install -t ./lib/python-2.7/site-packages python-magic
 fi
 
 . bin/activate
