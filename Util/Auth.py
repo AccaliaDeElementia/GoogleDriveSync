@@ -8,17 +8,10 @@ import httplib2
 from apiclient.discovery import build
 from oauth2client.client import OAuth2WebServerFlow
 
-
-# Copy your credentials from the APIs Console
-CONFIGDIR = '.GoogleDriveSync'
-CONFIGSTORE = path.join(CONFIGDIR, 'config.cfg')
-CREDENTIALS = path.join(CONFIGDIR, 'credentials')
-
-CONFIG = ConfigParser()
-with open(CONFIGSTORE, 'r') as fp:
-    CONFIG.readfp(fp)
-CLIENT_ID = CONFIG.get('CLIENT', 'ID')
-CLIENT_SECRET = CONFIG.get('CLIENT', 'SECRET')
+import Constants
+import Config
+CLIENT_ID = Config.get('CLIENT', 'ID')
+CLIENT_SECRET = Config.get('CLIENT', 'SECRET')
 OAUTH_SCOPE = 'https://www.googleapis.com/auth/drive'
 REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob'
 
@@ -32,13 +25,14 @@ def __new_credentials():
     return credentials
 
 def get_credentials(): 
-    if path.exists(CREDENTIALS):
-        with open(CREDENTIALS, 'rb') as fp:
+    if path.exists(Constants.CREDENTIALS):
+        with open(Constants.CREDENTIALS, 'rb') as fp:
             return pickle.load(fp)
     else:
         credentials = __new_credentials()
         with open(CREDENTIALS, 'wb') as fp:
             pickle.dump(credentials, fp)
+        credentials.refreshToken()
         return credentials
 
 def get_service():
