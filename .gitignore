@@ -42,6 +42,7 @@ bin
 include
 lib
 local
+test
 
 # secrets and local storage
 .GoogleDriveSync

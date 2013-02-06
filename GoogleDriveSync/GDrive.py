@@ -2,12 +2,19 @@
 
 import re
 import os
+from datetime import datetime
 
 class File (object):
     def __init__ (self, item, path=None):
         self.id = item['id']
         self.path = path
         self.title = item.get('title')
+        # TODO: make this parse more robust, just incase google changes it
+        self.modified = datetime.strptime(
+                            item['modifiedDate'],'%Y-%m-%dT%H:%M:%S.%fZ')
+        self.isdir = item['mimeType'] == u'application/vnd.google-apps.folder'
+        self.processed = False
+
     def __str__(self):
         return self.path
 
@@ -16,6 +23,8 @@ class Files(object):
         self.__service = service
         self.__ignored = []
         self.__files = None
+        self.__paths = None
+        self.__ids = None
         self.__modct = 0
     
     def __iter__(self):
@@ -62,7 +71,7 @@ class Files(object):
             elif len(pars) == 1:
                 path_.insert(0, pars[0]['title'])
             item = pars[0] if pars else None
-        return os.sep.join(path_)
+        return './'+os.sep.join(path_)
 
     @staticmethod
     def __make_sorted(unsorted, getkey=lambda item: str(item)):
@@ -76,15 +85,25 @@ class Files(object):
             self.__ignored = []
             files, map_ = self.__fetch()
             items = []
+            paths = {}
+            ids = {}
             for item in files:
+                if item['labels']['trashed']:
+                    continue
                 path = self.__path(item, map_)
                 if path:
-                    items.append(File(item, path))
+                    file = File(item, path)
+                    items.append(file)
+                    paths[path] = file
+                    ids[item['id']] = file
                 else:
                     self.__ignored.append(File(item))
-
             self.__files = self.__make_sorted(items, lambda x: x.path)
+            self.__paths = paths
+            self.__ids = ids
         except:
             self.__ignored = []
             self.__files = None
+            self.__paths = None
+            self.__ids = None
             raise
