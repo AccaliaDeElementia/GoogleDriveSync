@@ -3,14 +3,14 @@ Sync algorithm notes
 
 To sync files follow this algorithm:
 
-Load cache of items already synced
-Get file system tree
-get remote list
-for each item in cache sync local and remote and mark nodes processed
-for each item in local that is not marked processed sync local and remote, mark processed and update cache
-for each item in remote that is not marked processed download and update cache
-save updated cache
-
+    Load cache of items already synced
+    Get file system tree
+    get remote list
+    for each item in cache sync local and remote and mark nodes processed
+    for each item in local that is not marked processed sync local and remote, mark processed and update cache
+    for each item in remote that is not marked processed download and update cache
+    save updated cache
+    
 Sync item follows following rules:
 
     If item exists in cache:
