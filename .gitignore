@@ -34,6 +34,10 @@ nosetests.xml
 .project
 .pydevproject
 
+# wiki
+
+*.wiki
+
 # vim
 *.swp
 
