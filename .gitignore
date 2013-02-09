@@ -41,7 +41,7 @@ nosetests.xml
 *.swp
 
 #ctags
-tage
+tags
 
 # Virtualenv
 bin
