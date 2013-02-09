@@ -35,11 +35,13 @@ nosetests.xml
 .pydevproject
 
 # wiki
-
 *.wiki
 
 # vim
 *.swp
+
+#ctags
+tage
 
 # Virtualenv
 bin

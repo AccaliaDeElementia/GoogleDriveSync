@@ -44,4 +44,5 @@ Sync item follows following rules:
         else remote parents are folder
             uploade new item and add to cache
 
-    
+___
+<small>This app has super Fluttershy powers</small>
