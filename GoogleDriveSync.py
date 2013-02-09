@@ -2,6 +2,7 @@ import os
 import re
 import cPickle as pickle
 
+from fnmatch import fnmatch
 from os import path
 from sys import argv
 from ConfigParser import SafeConfigParser as ConfigParser
@@ -32,7 +33,6 @@ class Config (object):
             self.__loaded = True
         except Exception, e:
             print e
-    
     def get (self, section, option, parser = unicode, error=False):
         self.__load()
         if not self.__cfg.has_section(section):
@@ -45,7 +45,6 @@ class Config (object):
         elif error:
             raise GoogleDriveSyncError('Option not exist')
         return None
-
     def set(self, section, option, value, persist=False):
         self.__load()
         if not self.__cfg.has_section(section):
@@ -54,6 +53,15 @@ class Config (object):
         if persist:
             with open(self.CONFIG, 'w') as conf:
                 self.__cfg.write(cfg)
+    def ignore_list(self):
+        ignore = [self.DIR+u'/']
+        if path.exists(Config.IGNORE):
+            with open(Config.IGNORE, 'r') as igfile:
+                for line in igfile:
+                    line = unicode(line.strip())
+                    if len(line) and line[0] != u'#':
+                        ignore.append(line)
+        return ignore
 Config = Config()
 
 
@@ -77,6 +85,18 @@ def get_key(extractor=lambda x: x):
     def key(item):
         return tuple(int(num) if num else alpha.lower() for num, alpha in TOKENIZE(extractor(item)))
     return key
+
+IGNORES = Config.ignore_list()
+def fnfilter(path, is_dir=False):
+    for pattern in IGNORES:
+        if pattern[-1] == u'/':
+            if is_dir:
+                pattern = pattern[:-1]
+            else:
+                continue
+            if not fnmatch(path, pattern):
+                return False
+    return True
 
 class GDrive(object):
     class File (object):
@@ -147,10 +167,55 @@ class GDrive(object):
     def list(self):
         return self.__files
 
+class Local(object):
+    class File(object):
+        def __init__(self, path):
+            self.path = unicode(path)
+        def __str__(self):
+            return self.path
+        def __unicode__(self):
+            return self.path
+
+    def __init__(self):
+        self.__files = None
+        self.__paths = None
+
+    def update(self):
+        items = []
+        paths = {}
+        for root, dirs, files in os.walk(u'.'):
+            if root != u'.':
+                f = self.File(root)
+                items.append(f)
+                paths[root] = f
+            i = 0
+            while i < len(dirs):
+                if fnfilter(root+u'/'+dirs[i], True):
+                    i += 1
+                else:
+                    del dirs[i]
+            key = get_key()
+            dirs.sort(key=key)
+            files.sort(key=key)
+            for item in files:
+                path = root+os.sep+item
+                if fnfilter(path):
+                    f = self.File(path)
+                    items.append(f)
+                    paths[path] = f
+        self.__files = items
+        self.__paths = paths
+
+    def list(self):
+        return self.__files
+
 drive = GDrive()
 drive.update()
+local = Local()
+local.update()
 print(len(drive.list()))
-for item in drive.list():
-    print(unicode(item))
+print(len(local.list()))
+for item in local.list():
+    print(item.__str__())
 
 #This app has super Fluttershy powers
