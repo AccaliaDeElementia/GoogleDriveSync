@@ -24,14 +24,26 @@ import os
 import re
 import cPickle as pickle
 
+from pprint import pprint
+from datetime import datetime
 from fnmatch import fnmatch
 from os import path
 from sys import argv
 from ConfigParser import SafeConfigParser as ConfigParser
 
+#Mimetype guessing
+from magic import Magic
+
+#Httplib2 imports
 from httplib2 import Http
+
+# Google Api Client imports
+from apiclient import errors
 from apiclient.discovery import build
+from apiclient.http import MediaFileUpload
 from oauth2client.client import OAuth2WebServerFlow
+
+MIME = Magic(mime=True)
 
 class GoogleDriveSyncError(Exception):
     u"""Base exception used by GoogleDriveSync.
@@ -52,6 +64,10 @@ class Config (object):
     CREDENTIALS = DIR + os.sep + u'credentials.pkl'
     IGNORE = DIR + os.sep + 'syncignore'
     CACHE = DIR + os.sep + u'GoogleDriveSync.cache'
+    DLFIELDS = ('nextPageToken,items(id,title,mimeType,downloadUrl,' + 
+             'fileSize,modifiedDate,parents(id),labels,md5Checksum)')
+    ULFIELDS = ('id,title,mimeType,downloadUrl,' + 
+             'fileSize,modifiedDate,parents(id),labels,md5Checksum')
 
     def __init__(self):
         u"""Initialize the configuration parser.
@@ -292,11 +308,9 @@ class GDrive(object):
         """
         ids = {}
         func = self.service.files().list
-        fields = ('nextPageToken,items(id,title,mimeType,downloadUrl,' + 
-                 'fileSize,modifiedDate,parents(id),labels,md5Checksum)')
         page = None
         while True:
-            params = {'fields': fields}
+            params = {'fields': CONFIG.DLFIELDS}
             if page:
                 params['pageToken'] = page
             items = func(**params).execute()
@@ -327,6 +341,31 @@ class Local(object):
             u"""Initialize representation of local path_
             """
             self.path = unicode(path_)
+            self.title = path.basename(self.path)
+            self.parent = path.dirname(self.path)
+            self.isdir = path.isdir(self.path)
+            if self.isdir or not path.exists(self.path):
+                self.length = 0
+                self.mimetype = ('application/vnd.google-apps.folder' 
+                    if self.isdir else None)
+            else:
+                self.length = path.getsize(self.path)
+                self.mimetype = MIME.from_file(self.path)
+
+        def getmtime(self):
+            u"""Return datetime of last file modification.
+            """
+            # strip sub millisecond info from the timestamp
+            # Google Drive does not prove greater resolution than 
+            # millisecond
+            time = int(path.getmtime(self.path)*1000)/1000.0
+            return datetime.utcfromtimestamp(time)
+
+        def getsmtime(self):
+            u"""Get modification time string in RFC 3339 format
+            """
+            return self.getmtime().isoformat('T')+'Z'
+
         def __str__(self):
             u"""Return string representing file path.
             """
@@ -486,15 +525,31 @@ class Sync(object):
         self.local.update()
         self.gdrive.update()
 
+
+    def send_file(self, path_, convert=False):
+        u"""Send new local file to Google Drive.
+        """
+        file_ = Local.File(path_)
+        if file_.isdir:
+            media = None
+        else:
+            media = MediaFileUpload(file_.path, mimetype=file_.mimetype, resumable=True)
+        body = {
+            'title': file_.title,
+            'mimeType': file_.mimetype,
+            'modifiedDate':file_.getsmtime()
+        }
+        fserv = self.gdrive.service.files()
+        insert  = fserv.insert(body=body, media_body=media,
+                            fields = CONFIG.ULFIELDS)
+        if convert:
+            insert.uri += u'&convert=true'
+        return insert.execute()
+
 if __name__ == '__main__':
     DRIVE = GDrive()
     LOCAL = Local()
     CACHE = Cache.load()
     SYNC = Sync(LOCAL, DRIVE, CACHE)
     SYNC.sync()
-    print(len(DRIVE.list()))
-    print(len(LOCAL.list()))
-    for listitem in LOCAL.list():
-        print(str(listitem))
-
-
+    pprint(SYNC.send_file('GoogleDriveSync-bak', True))
