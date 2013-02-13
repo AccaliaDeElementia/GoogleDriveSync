@@ -64,10 +64,7 @@ class Config (object):
     CREDENTIALS = DIR + os.sep + u'credentials.pkl'
     IGNORE = DIR + os.sep + 'syncignore'
     CACHE = DIR + os.sep + u'GoogleDriveSync.cache'
-    DLFIELDS = ('nextPageToken,items(id,title,mimeType,downloadUrl,' + 
-             'fileSize,modifiedDate,parents(id),labels,md5Checksum)')
-    ULFIELDS = ('id,title,mimeType,downloadUrl,' + 
-             'fileSize,modifiedDate,parents(id),labels,md5Checksum')
+    FIELDS = 'nextPageToken,items'
 
     def __init__(self):
         u"""Initialize the configuration parser.
@@ -233,17 +230,20 @@ class GDrive(object):
             See: 
                https://developers.google.com/drive/v2/reference/files#resource
             """
-            self.item = item
             self.path = None
+            self.update(item)
+
+        def update(self, item):
+            self.item = item
             self.id = item.get('id')
             self.parents = item.get('parents')
             self.title = item.get('title')
             self.labels = item.get('labels')
+
         def __unicode__(self):
             u"""Return a uicode representation of file path.
             """
             return self.path + os.sep + self.title
-
         def __str__(self):
             u"""Return a string representation of file path.
             """
@@ -310,7 +310,7 @@ class GDrive(object):
         func = self.service.files().list
         page = None
         while True:
-            params = {'fields': CONFIG.DLFIELDS}
+            params = {'fields': CONFIG.FIELDS}
             if page:
                 params['pageToken'] = page
             items = func(**params).execute()
@@ -323,6 +323,26 @@ class GDrive(object):
         self.__ids = ids
         self.__find_paths()
         self.__sort_files()
+
+    def get_by_id(self, id_):
+        return self.__ids.get(id_)
+
+    def get_by_path(self, path_):
+        return self.__paths.get(path_)
+
+    def insert(self, item):
+        exists = self.__ids.get(item['id'])
+        if exists:
+            del self.__ids[exists.id]
+            del self.__paths[exists.path]
+            self.__files.remove(exists)
+        file_ = self.File(item)
+        self.__ids[file_.id] = file_
+        file_.path = self.__get_path(file_)
+        if file_.path and not file_.labels.get('trashed'):
+            self.__paths[file_.path] = file_
+            self.__sort_files()
+        return file_
 
     def list(self):
         u"""Return list of files and directorys in GoogleDrive.
@@ -410,6 +430,9 @@ class Local(object):
                     paths[path_] = file_
         self.__files = items
         self.__paths = paths
+
+    def get_by_path(self, path_):
+        return self.__paths.get(path_)
 
     def list(self):
         u"""Return list of local files sorted by natural number sort.
@@ -525,8 +548,30 @@ class Sync(object):
         self.local.update()
         self.gdrive.update()
 
+    def update_file(self, path_, id_):
+        u"""Update existing file on Google Drive.
+        """
+        target = self.gdrive.get_by_id(id_)
+        if not target:
+            raise ValueError('id not found on server')
+        file_ = self.local.get_by_path(path_)
+        if file_.isdir:
+            media = None
+        else:
+            media = MediaFileUpload(file_.path, mimetype=file_.mimetype, resumable=True)
+        body = target.item
+        body['modifiedDate'] = file_.getsmtime()
+        body['mimeType'] = file_.mimetype
+        body['title'] = file_.title
+        fserv = self.gdrive.service.files()
+        update = fserv.update(fileId=id_, body=body, media_body=media,
+            newRevision=True, setModifiedDate=True)
+        update.uri += u'&convert=true'
+        item = update.execute()
+        result = self.gdrive.insert(item)
+        return result
 
-    def send_file(self, path_, convert=False):
+    def send_file(self, path_):
         u"""Send new local file to Google Drive.
         """
         file_ = Local.File(path_)
@@ -540,11 +585,11 @@ class Sync(object):
             'modifiedDate':file_.getsmtime()
         }
         fserv = self.gdrive.service.files()
-        insert  = fserv.insert(body=body, media_body=media,
-                            fields = CONFIG.ULFIELDS)
-        if convert:
-            insert.uri += u'&convert=true'
-        return insert.execute()
+        insert  = fserv.insert(body=body, media_body=media)
+        insert.uri += u'&setModifiedDate=true&convert=true'
+        item = insert.execute()
+        result = self.gdrive.insert(item)
+        return result
 
 if __name__ == '__main__':
     DRIVE = GDrive()
@@ -552,4 +597,7 @@ if __name__ == '__main__':
     CACHE = Cache.load()
     SYNC = Sync(LOCAL, DRIVE, CACHE)
     SYNC.sync()
-    pprint(SYNC.send_file('GoogleDriveSync-bak', True))
+    res = SYNC.send_file('./README.md')
+    DRIVE.update()
+    res2 = SYNC.update_file('./README-DEVNOTES.md', res.id)
+    pprint(res2)
